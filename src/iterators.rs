@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::slice::Iter;
 use std::vec::IntoIter;
 
@@ -330,38 +330,64 @@ impl<'a, T> Clone for PostOrderTraversal<'a, T> {
 /// `next` will return the next `NodeId` in Post-Order Traversal order.
 ///
 #[derive(Clone)]
-pub struct PostOrderTraversalIds {
-    ids: IntoIter<NodeId>,
+pub struct PostOrderTraversalIds<'a, T> {
+    tree: &'a Tree<T>,
+    start_node_id: NodeId,
+    node_id: NodeId,
+    visited: HashSet<NodeId>,
 }
 
-impl PostOrderTraversalIds {
-    pub(crate) fn new<T>(tree: &Tree<T>, node_id: NodeId) -> PostOrderTraversalIds {
-        // over allocating, but all at once instead of re-sizing and re-allocating as we go
-        let mut ids = Vec::with_capacity(tree.capacity());
-
-        PostOrderTraversalIds::process_nodes(node_id, tree, &mut ids);
-
+impl<'a, T> PostOrderTraversalIds<'a, T> {
+    pub(crate) fn new(tree: &'a Tree<T>, node_id: NodeId) -> PostOrderTraversalIds<'a, T> {
         PostOrderTraversalIds {
-            ids: ids.into_iter(),
+            tree,
+            start_node_id: node_id.clone(),
+            node_id,
+            visited: HashSet::new(),
         }
     }
 
-    fn process_nodes<T>(starting_id: NodeId, tree: &Tree<T>, ids: &mut Vec<NodeId>) {
-        let node = tree.get(&starting_id).unwrap();
-
-        for child_id in node.children() {
-            PostOrderTraversalIds::process_nodes(child_id.clone(), tree, ids);
-        }
-
-        ids.push(starting_id);
+    fn unvisited_child(&self, node_id: &NodeId) -> Option<NodeId> {
+        self.tree.get(node_id).ok().and_then(|node_ref| {
+            node_ref.children().iter().find_map(|child_id| {
+                if !self.visited.contains(child_id) {
+                    Some(child_id.clone())
+                } else {
+                    None
+                }
+            })
+        })
     }
 }
 
-impl Iterator for PostOrderTraversalIds {
+impl<T> Iterator for PostOrderTraversalIds<'_, T> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<NodeId> {
-        self.ids.next()
+        if self.visited.contains(&self.start_node_id) {
+            // We're done.
+            return None;
+        }
+
+        // Move down the leftmost unvisited path
+        while let Some(node_id) = self.unvisited_child(&self.node_id) {
+            self.node_id = node_id
+        }
+        let most_down_node_id = self.node_id.clone();
+
+        if let Some(parent_id) = self
+            .tree
+            .get(&most_down_node_id)
+            .ok()
+            .and_then(|node_ref| node_ref.parent())
+        {
+            // Move up for next iteration
+            self.node_id = parent_id.clone();
+        }
+
+        // No unvisited children - visit this node
+        self.visited.insert(most_down_node_id.clone());
+        Some(most_down_node_id)
     }
 }
 

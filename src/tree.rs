@@ -1477,7 +1477,7 @@ impl<T> Tree<T> {
     pub fn traverse_post_order_ids(
         &self,
         node_id: &NodeId,
-    ) -> Result<PostOrderTraversalIds, NodeIdError> {
+    ) -> Result<PostOrderTraversalIds<'_, T>, NodeIdError> {
         let (is_valid, error) = self.is_valid_node_id(node_id);
         if !is_valid {
             return Err(error.expect(
